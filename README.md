@@ -103,6 +103,29 @@ $$
 
 ---
 
+### 配色与配图
+
+强调色、阴影、圆角都集中在 `assets/css/extended/custom.css` 顶部，浅色/深色各一套：
+
+```css
+--accent: #0f766e;        /* 链接、按钮、激活态、标签 */
+--accent-soft: rgba(...); /* 标签底、引用块底、头像光晕 */
+--accent-line: rgba(...); /* 细边框 */
+--shadow-sm/md/lg: ...;
+```
+
+改 `--accent` 三个变量就能整体换色，导航、按钮、卡片、标签、引用块、目录都会跟着变。
+
+想给项目或文章加配图，在 front matter 里加：
+
+```yaml
+cover:
+  image: "/assets/your-image.png"
+  alt: "项目截图"
+```
+
+图片放 `static/assets/`，列表卡片和文章页会自动套用圆角、边框和阴影。
+
 ## 4. 写一篇新文章
 
 ```bash
