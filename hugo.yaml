@@ -1,0 +1,149 @@
+# ---------------------------------------------------------------------------
+# Site configuration
+# Docs: https://gohugo.io/configuration/all/
+# ---------------------------------------------------------------------------
+baseURL: "https://jokerxuxu.github.io/"
+title: "Suzhongyu"
+theme: ["PaperMod"]
+
+locale: "en-US"
+defaultContentLanguage: "en"
+enableRobotsTXT: true
+enableEmoji: true
+
+buildDrafts: false
+buildFuture: false
+buildExpired: false
+
+pygmentsUseClasses: true
+
+pagination:
+  pagerSize: 8
+
+taxonomies:
+  tag: tags
+  category: categories
+
+outputs:
+  home:
+    - HTML
+    - RSS
+    - JSON
+
+minify:
+  disableXML: true
+  minifyOutput: true
+
+# ---------------------------------------------------------------------------
+# Markdown rendering
+# ---------------------------------------------------------------------------
+markup:
+  goldmark:
+    renderer:
+      unsafe: true # allow raw HTML in markdown
+    extensions:
+      passthrough:
+        enable: true
+        delimiters:
+          inline:
+            - ["$", "$"]
+          block:
+            - ["$$", "$$"]
+  highlight:
+    noClasses: false
+    codeFences: true
+    guessSyntax: true
+    lineNos: false
+    style: "monokai"
+
+# ---------------------------------------------------------------------------
+# Theme parameters
+# ---------------------------------------------------------------------------
+params:
+  env: production
+  description: "Suzhongyu (某不科学的虚) — engineering mechanics, tendon-driven soft robotics, and embodied intelligence."
+  keywords: ["tendon-driven", "soft robotics", "MuJoCo", "dexterous manipulation", "embodied AI"]
+  author: "Suzhongyu"
+
+  DateFormat: "January 2, 2006"
+  defaultTheme: auto
+  disableThemeToggle: false
+
+  ShowReadingTime: true
+  ShowWordCount: true
+  ShowShareButtons: false
+  ShowCodeCopyButtons: true
+  ShowToc: true
+  TocOpen: false
+  ShowBreadCrumbs: false
+  ShowPostNavLinks: true
+  ShowRssButtonInSectionTermList: false
+  UseHugoToc: true
+  comments: false
+
+  # Sections shown on the home page when profile mode is disabled.
+  mainSections: ["posts", "projects"]
+
+  # Set to true to load KaTeX on every page; otherwise add `math: true`
+  # to the front matter of the pages that need it.
+  math: false
+
+  profileMode:
+    enabled: true
+    title: "Suzhongyu"
+    subtitle: "某不科学的虚 · Mechanics × Soft Robotics × Embodied AI"
+    imageUrl: "avatar.png"
+    imageTitle: "Suzhongyu"
+    imageWidth: 180
+    imageHeight: 180
+    buttons:
+      - name: About
+        url: about/
+      - name: Projects
+        url: projects/
+      - name: Blog
+        url: posts/
+
+  socialIcons:
+    - name: github
+      title: GitHub
+      url: "https://github.com/jokerxuxu"
+    - name: googlescholar
+      title: Google Scholar
+      url: "https://scholar.google.com/citations?user=YOUR_SCHOLAR_ID"
+    - name: email
+      title: Email
+      url: "mailto:YOUR_EMAIL@example.com"
+    - name: rss
+      title: RSS
+      url: "index.xml"
+
+  assets:
+    favicon: "/assets/favicon-32.png"
+    favicon16x16: "/assets/favicon-16.png"
+    favicon32x32: "/assets/favicon-32.png"
+    apple_touch_icon: "/assets/apple-touch-icon.png"
+    safari_pinned_tab: "/assets/favicon-32.png"
+
+menu:
+  main:
+    - identifier: about
+      name: About
+      url: /about/
+      weight: 10
+    - identifier: projects
+      name: Projects
+      url: /projects/
+      weight: 20
+    - identifier: publications
+      name: Publications
+      url: /publications/
+      weight: 30
+    - identifier: blog
+      name: Blog
+      url: /posts/
+      weight: 40
+    - identifier: cv
+      name: CV
+      url: /cv/
+      weight: 50

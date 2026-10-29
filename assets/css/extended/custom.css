@@ -1,0 +1,50 @@
+/* ---------------------------------------------------------------------------
+   Small, low-risk tweaks on top of PaperMod.
+   Keep this file short: big visual changes belong in a fork, not here.
+   --------------------------------------------------------------------------- */
+
+/* Long display equations should scroll instead of breaking the layout. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-block: 0.25rem;
+}
+
+/* Slightly tighter profile heading, closer to the reference sites. */
+.profile_inner h1 {
+  letter-spacing: -0.02em;
+}
+
+/* Links inside prose: visible but not loud. */
+.post-content a {
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+
+/* Project / post cards: a bit more breathing room. */
+.post-entry {
+  padding-block: var(--gap);
+}
+
+/* Tables in About / CV pages read better with a little more space. */
+.post-content table th,
+.post-content table td {
+  padding: 0.5rem 0.75rem;
+}
+
+/* Short intro under the profile buttons. */
+.profile-content {
+  max-width: 34rem;
+  margin-top: 0.75rem;
+  color: var(--secondary);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.profile-content p {
+  margin: 0.35rem 0;
+}
+
+.profile-content strong {
+  color: var(--primary);
+}
