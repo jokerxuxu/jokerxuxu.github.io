@@ -120,42 +120,34 @@ $$
 
 ---
 
-## 5. 部署到 GitHub Pages
+## 5. 部署：直接替换旧站
 
-> ⚠️ **先读这段**：`jokerxuxu.github.io` 这个域名和同名仓库不是空的。它现在跑着一个 Hexo「虚的小屋」旧站
-> （仓库 `jokerxuxu/jokerxuxu.github.io`，默认分支 `master`，最后一次提交 2024-07），归档里有 4 篇 2024 年的笔记：
-> 理论力学（物理类）、数学物理方法、微积分、个人简介。
->
-> 往那个仓库 push 会**直接覆盖旧站**。所以先决定旧站怎么处理：
+`jokerxuxu.github.io` 原来是一个 Hexo「虚的小屋」（`master` 分支，4 篇 2024 年的课程笔记）。按方案 C 处理：
 
-| 方案 | 最终地址 | 说明 |
-| --- | --- | --- |
-| **A. 迁移旧文再替换**（推荐） | `https://jokerxuxu.github.io/` | 把 4 篇旧文改写成 Hugo 文章，用 `aliases` 保住旧链接；旧仓库先打 tag / 归档备份 |
-| **B. 新站放子路径** | `https://jokerxuxu.github.io/home/` | 旧站完全不动；新仓库叫 `home`，`baseURL` 改成 `https://jokerxuxu.github.io/home/` |
-| **C. 直接替换、不迁移** | `https://jokerxuxu.github.io/` | 最快；旧内容只留在 git 历史里，线上不再可见 |
+- 新站推到 **`main`**，旧 `master` 原样保留，相当于一份备份；
+- 确认新站正常后，再把默认分支切成 `main`；
+- **旧的 `/2024/...` 链接不会再存在**（没有做迁移）。
 
-### 部署步骤
+### 步骤
 
-1. 仓库：方案 A/C 用 `jokerxuxu.github.io`；方案 B 新建 `home`。
-2. 推送：
+1. 推送（本地仓库已经配好 `origin`，这一步需要你的 GitHub 账号）：
 
    ```bash
-   git remote add origin https://github.com/jokerxuxu/jokerxuxu.github.io.git
-   git add .
-   git commit -m "init personal site"
    git push -u origin main
    ```
 
-   > 旧仓库的默认分支是 `master`。继续用这个仓库的话，要么在
-   > **Settings → Branches** 把默认分支改成 `main`，要么把 `.github/workflows/deploy.yml`
-   > 里的 `branches: [main]` 改成 `master`。
-
-3. 仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**。
+2. 打开仓库 **Settings → Pages → Build and deployment → Source**，选 **GitHub Actions**。
    如果旧站之前是 “Deploy from a branch”，这一步会停掉旧站。
-4. 之后每次 `git push` 自动构建发布，通常 1–2 分钟。
 
-> 方案 B 记得把 `hugo.yaml` 的 `baseURL` 改成 `https://jokerxuxu.github.io/home/`，
-> 否则站内绝对链接会指到根目录。
+3. 到 **Actions** 页等 `Deploy Hugo site to GitHub Pages` 跑完。
+   如果 push 发生在开启 Pages 之前、部署那一步失败了，点 **Re-run all jobs** 即可。
+
+4. **Settings → General → Default branch** 改成 `main`（`master` 可以保留，也可以以后删）。
+
+5. 打开 <https://jokerxuxu.github.io/> 确认。之后每次 `git push` 都会自动构建发布，通常 1–2 分钟。
+
+> 本地已经把旧站存成了 `legacy-hexo` 分支（指向 `origin/master`），想多一份备份可以
+> `git push origin legacy-hexo`。
 
 ### 自定义域名（可选）
 

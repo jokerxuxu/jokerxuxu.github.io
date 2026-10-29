@@ -2,9 +2,12 @@
 
 按顺序改完这些，站点就是你的了。改完一项勾一项。
 
-## 先决定
+## 部署（已选：直接替换，不迁移）
 
-- [ ] **旧站怎么办**：`jokerxuxu.github.io` 现在是一个 Hexo 旧站（4 篇 2024 年的课程笔记 + 个人简介）。迁移 / 放子路径 / 直接替换，见 README 第 5 节
+- [x] 方案确定：新站推 `main`，旧 `master` 保留为备份
+- [ ] `git push -u origin main`
+- [ ] Settings → Pages → Source 选 GitHub Actions
+- [ ] 部署成功后把默认分支改成 `main`
 
 ## 必改
 
