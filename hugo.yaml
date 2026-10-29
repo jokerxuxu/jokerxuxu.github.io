@@ -78,6 +78,8 @@ languages:
         buttons:
           - name: About
             url: about/
+          - name: CV
+            url: cv/
           - name: Projects
             url: projects/
           - name: Blog
@@ -88,21 +90,21 @@ languages:
           name: About
           url: /about/
           weight: 10
-        - identifier: projects
-          name: Projects
-          url: /projects/
-          weight: 20
-        - identifier: publications
-          name: Publications
-          url: /publications/
-          weight: 30
-        - identifier: blog
-          name: Blog
-          url: /posts/
-          weight: 40
         - identifier: cv
           name: CV
           url: /cv/
+          weight: 20
+        - identifier: projects
+          name: Projects
+          url: /projects/
+          weight: 30
+        - identifier: publications
+          name: Publications
+          url: /publications/
+          weight: 40
+        - identifier: blog
+          name: Blog
+          url: /posts/
           weight: 50
 
   zh:
@@ -120,6 +122,8 @@ languages:
         buttons:
           - name: 关于
             url: about/
+          - name: 简历
+            url: cv/
           - name: 项目
             url: projects/
           - name: 博客
@@ -130,21 +134,21 @@ languages:
           name: 关于
           url: /about/
           weight: 10
-        - identifier: projects
-          name: 项目
-          url: /projects/
-          weight: 20
-        - identifier: publications
-          name: 论文
-          url: /publications/
-          weight: 30
-        - identifier: blog
-          name: 博客
-          url: /posts/
-          weight: 40
         - identifier: cv
           name: 简历
           url: /cv/
+          weight: 20
+        - identifier: projects
+          name: 项目
+          url: /projects/
+          weight: 30
+        - identifier: publications
+          name: 论文
+          url: /publications/
+          weight: 40
+        - identifier: blog
+          name: 博客
+          url: /posts/
           weight: 50
 
 # ---------------------------------------------------------------------------
