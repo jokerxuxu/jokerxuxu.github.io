@@ -8,6 +8,8 @@ theme: ["PaperMod"]
 
 locale: "en-US"
 defaultContentLanguage: "en"
+defaultContentLanguageInSubdir: false
+
 enableRobotsTXT: true
 enableEmoji: true
 
@@ -57,17 +59,102 @@ markup:
     style: "monokai"
 
 # ---------------------------------------------------------------------------
-# Theme parameters
+# Languages
+# English lives at /, Chinese at /zh/
+# ---------------------------------------------------------------------------
+languages:
+  en:
+    label: "EN"
+    weight: 1
+    title: "Suzhongyu"
+    params:
+      description: "Suzhongyu (某不科学的虚) — engineering mechanics, tendon-driven soft robotics, and embodied intelligence."
+      keywords: ["tendon-driven", "soft robotics", "MuJoCo", "dexterous manipulation", "embodied AI"]
+      author: "Suzhongyu"
+      DateFormat: "January 2, 2006"
+      profileMode:
+        title: "Suzhongyu"
+        subtitle: "某不科学的虚 · Mechanics × Soft Robotics × Embodied AI"
+        buttons:
+          - name: About
+            url: about/
+          - name: Projects
+            url: projects/
+          - name: Blog
+            url: posts/
+    menu:
+      main:
+        - identifier: about
+          name: About
+          url: /about/
+          weight: 10
+        - identifier: projects
+          name: Projects
+          url: /projects/
+          weight: 20
+        - identifier: publications
+          name: Publications
+          url: /publications/
+          weight: 30
+        - identifier: blog
+          name: Blog
+          url: /posts/
+          weight: 40
+        - identifier: cv
+          name: CV
+          url: /cv/
+          weight: 50
+
+  zh:
+    label: "中文"
+    weight: 2
+    title: "苏中玉"
+    params:
+      description: "苏中玉（某不科学的虚）——工程力学、绳驱动软体机器人与具身智能。"
+      keywords: ["绳驱动", "软体机器人", "MuJoCo", "灵巧操作", "具身智能"]
+      author: "苏中玉"
+      DateFormat: "2006年1月2日"
+      profileMode:
+        title: "苏中玉"
+        subtitle: "某不科学的虚 · 力学 × 软体机器人 × 具身智能"
+        buttons:
+          - name: 关于
+            url: about/
+          - name: 项目
+            url: projects/
+          - name: 博客
+            url: posts/
+    menu:
+      main:
+        - identifier: about
+          name: 关于
+          url: /about/
+          weight: 10
+        - identifier: projects
+          name: 项目
+          url: /projects/
+          weight: 20
+        - identifier: publications
+          name: 论文
+          url: /publications/
+          weight: 30
+        - identifier: blog
+          name: 博客
+          url: /posts/
+          weight: 40
+        - identifier: cv
+          name: 简历
+          url: /cv/
+          weight: 50
+
+# ---------------------------------------------------------------------------
+# Theme parameters (shared, language-specific values live above)
 # ---------------------------------------------------------------------------
 params:
   env: production
-  description: "Suzhongyu (某不科学的虚) — engineering mechanics, tendon-driven soft robotics, and embodied intelligence."
-  keywords: ["tendon-driven", "soft robotics", "MuJoCo", "dexterous manipulation", "embodied AI"]
-  author: "Suzhongyu"
-
-  DateFormat: "January 2, 2006"
   defaultTheme: auto
   disableThemeToggle: false
+  displayFullLangName: true
 
   ShowReadingTime: true
   ShowWordCount: true
@@ -90,19 +177,10 @@ params:
 
   profileMode:
     enabled: true
-    title: "Suzhongyu"
-    subtitle: "某不科学的虚 · Mechanics × Soft Robotics × Embodied AI"
     imageUrl: "avatar.png"
     imageTitle: "Suzhongyu"
     imageWidth: 180
     imageHeight: 180
-    buttons:
-      - name: About
-        url: about/
-      - name: Projects
-        url: projects/
-      - name: Blog
-        url: posts/
 
   socialIcons:
     - name: github
@@ -124,26 +202,3 @@ params:
     favicon32x32: "/assets/favicon-32.png"
     apple_touch_icon: "/assets/apple-touch-icon.png"
     safari_pinned_tab: "/assets/favicon-32.png"
-
-menu:
-  main:
-    - identifier: about
-      name: About
-      url: /about/
-      weight: 10
-    - identifier: projects
-      name: Projects
-      url: /projects/
-      weight: 20
-    - identifier: publications
-      name: Publications
-      url: /publications/
-      weight: 30
-    - identifier: blog
-      name: Blog
-      url: /posts/
-      weight: 40
-    - identifier: cv
-      name: CV
-      url: /cv/
-      weight: 50

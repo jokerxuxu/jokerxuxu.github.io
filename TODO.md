@@ -13,9 +13,10 @@
 
 - [ ] **邮箱**：`hugo.yaml` → `params.socialIcons` 里 `mailto:YOUR_EMAIL@example.com`
 - [ ] **邮箱**：`content/about.md` 底部 `Elsewhere` 部分
+- [ ] **邮箱（中文版）**：`content/about.zh.md`、`content/cv.zh.md` 底部
 - [ ] **邮箱**：`content/cv.md` 底部 `Contact` 部分
 - [ ] **Google Scholar**：`hugo.yaml` 和 `content/about.md` 里的 `YOUR_SCHOLAR_ID`
-- [ ] **学校与时间**：`content/about.md` 和 `content/cv.md` 的 Education 部分
+- [ ] **学校与时间**：`content/about.md`、`content/about.zh.md`、`content/cv.md`、`content/cv.zh.md` 的 Education 部分
 - [ ] **头像**：替换 `assets/avatar.png`（正方形照片，建议 ≥ 400px；会自动裁圆）
 - [ ] **favicon**（可选）：`static/assets/favicon-16.png`、`favicon-32.png`、`apple-touch-icon.png`
 

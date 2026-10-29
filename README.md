@@ -120,7 +120,24 @@ $$
 
 ---
 
-## 5. 部署：直接替换旧站
+## 5. 中英文双语
+
+英文在 `/`，中文在 `/zh/`，右上角 `中文 / EN` 切换。切换时会尽量停在当前页面；如果这一页没有对应语言的翻译，就回到该语言首页。
+
+新增内容要同时给两个文件：
+
+| 内容 | 英文 | 中文 |
+| --- | --- | --- |
+| 关于 | `content/about.md` | `content/about.zh.md` |
+| 文章 | `content/posts/my-note.md` | `content/posts/my-note.zh.md` |
+| 项目 | `content/projects/foo.md` | `content/projects/foo.zh.md` |
+| 首页简介 | `content/_index.md` | `content/_index.zh.md` |
+
+菜单、首页副标题、`DateFormat` 在 `hugo.yaml` 的 `languages.en` / `languages.zh` 里分别配置。
+
+> 一个小坑：中文加粗如果**以中文标点结尾、后面又紧跟中文或英文**，CommonMark 可能不认，例如 `**最近：**在`。把冒号移到加粗外面写成 `**最近**：在`，或者后面加个空格就好。
+
+## 6. 部署：直接替换旧站
 
 `jokerxuxu.github.io` 原来是一个 Hexo「虚的小屋」（`master` 分支，4 篇 2024 年的课程笔记）。按方案 C 处理：
 
@@ -155,7 +172,7 @@ $$
 
 ---
 
-## 6. 常见坑
+## 7. 常见坑
 
 - **`themes/PaperMod` 是空的**：没初始化子模块，跑 `git submodule update --init --recursive`。
 - **本地样式正常、线上 404**：`baseURL` 和仓库路径不一致。
@@ -170,7 +187,7 @@ $$
 
 ---
 
-## 7. 致谢
+## 8. 致谢
 
 - [Hugo](https://gohugo.io/)
 - [PaperMod](https://github.com/adityatelange/hugo-PaperMod)

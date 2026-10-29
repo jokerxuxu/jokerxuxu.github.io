@@ -1,0 +1,24 @@
+{{- /*
+  Keep the header language switcher on the current page when a translation
+  exists. PaperMod links it to the other language's home by default; we
+  upgrade the href after load and fall back to the home link on 404.
+*/ -}}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var links = document.querySelectorAll(".lang-menu a");
+    if (!links.length) return;
+
+    var path = window.location.pathname;
+    var isZh = path === "/zh/" || path.indexOf("/zh/") === 0;
+    var target = isZh ? path.replace(/^\/zh/, "") || "/" : "/zh" + path;
+
+    fetch(target, { method: "HEAD" })
+      .then(function (res) {
+        if (!res.ok) return;
+        links.forEach(function (a) {
+          a.setAttribute("href", target);
+        });
+      })
+      .catch(function () {});
+  });
+</script>
