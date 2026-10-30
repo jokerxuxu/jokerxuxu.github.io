@@ -30,5 +30,6 @@ For education, research experience, and skills, see my [CV](/cv/).
 ## Elsewhere
 
 - GitHub: [@jokerxuxu](https://github.com/jokerxuxu)
-- Google Scholar: [YOUR_SCHOLAR_ID](https://scholar.google.com/citations?user=YOUR_SCHOLAR_ID) <!-- TODO -->
+<!--
+- Google Scholar: [YOUR_SCHOLAR_ID](https://scholar.google.com/citations?user=YOUR_SCHOLAR_ID)  TODO -->
 - Email: [suzhongyu@zju.edu.cn](mailto:suzhongyu@zju.edu.cn) <!-- TODO -->
