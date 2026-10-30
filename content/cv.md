@@ -11,11 +11,11 @@ comments: false
 
 ## Education
 
-**B.Eng. in Engineering Mechanics** — [Your University], 20XX – 20XX (expected) <!-- TODO -->
+**B.Eng. in Engineering Mechanics** — [Zhejiang University], 2023 – 2027 (expected) <!-- TODO -->
 
 ## Research experience
 
-**Undergraduate researcher** — [Lab / group], 20XX – present <!-- TODO -->
+**Undergraduate researcher** — [Lab / group], 2026 – present <!-- TODO -->
 
 - Modeling and simulating a tendon-driven biomimetic hand in MuJoCo.
 - Implementing joint-space control with tendon-level force allocation.
@@ -35,4 +35,4 @@ See the [projects page](/projects/) for details.
 ## Contact
 
 - GitHub: [@jokerxuxu](https://github.com/jokerxuxu)
-- Email: [YOUR_EMAIL@example.com](mailto:YOUR_EMAIL@example.com) <!-- TODO -->
+- Email: [suzhongyu@zju.edu.cn](mailto:suzhongyu@zju.edu.cn) <!-- TODO -->

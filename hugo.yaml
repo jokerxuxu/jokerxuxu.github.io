@@ -195,7 +195,7 @@ params:
       url: "https://scholar.google.com/citations?user=YOUR_SCHOLAR_ID"
     - name: email
       title: Email
-      url: "mailto:YOUR_EMAIL@example.com"
+      url: "mailto:suzhongyu@zju.edu.cn"
     - name: rss
       title: RSS
       url: "index.xml"

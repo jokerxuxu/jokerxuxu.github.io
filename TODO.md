@@ -11,7 +11,7 @@
 
 ## 必改
 
-- [ ] **邮箱**：`hugo.yaml` → `params.socialIcons` 里 `mailto:YOUR_EMAIL@example.com`
+- [x] **邮箱**：`hugo.yaml` → `params.socialIcons` 里 `mailto:YOUR_EMAIL@example.com`
 - [ ] **邮箱**：`content/about.md` 底部 `Elsewhere` 部分
 - [ ] **邮箱（中文版）**：`content/about.zh.md`、`content/cv.zh.md` 底部
 - [ ] **邮箱**：`content/cv.md` 底部 `Contact` 部分

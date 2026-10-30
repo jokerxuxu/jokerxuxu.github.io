@@ -11,11 +11,11 @@ comments: false
 
 ## 教育经历
 
-**工程力学 学士** —— [Your University]，20XX – 20XX（预计）<!-- TODO -->
+**工程力学 学士** —— [浙江大学]，2023 – 2027（预计
 
 ## 研究经历
 
-**本科生研究者** —— [课题组]，20XX – 至今 <!-- TODO -->
+**本科生研究者** —— [课题组]，2026 – 至今 <!-- TODO -->
 
 - 在 MuJoCo 中建模并仿真一只绳驱动仿生手。
 - 实现关节空间控制，并在肌腱层面做力分配。
@@ -35,4 +35,4 @@ comments: false
 ## 联系方式
 
 - GitHub：[@jokerxuxu](https://github.com/jokerxuxu)
-- 邮箱：[YOUR_EMAIL@example.com](mailto:YOUR_EMAIL@example.com) <!-- TODO -->
+- 邮箱：[suzhongyu@zju.edu.cn](mailto:suzhongyu@zju.edu.cn) <!-- TODO -->

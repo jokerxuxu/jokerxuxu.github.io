@@ -31,4 +31,4 @@ comments: false
 
 - GitHub：[@jokerxuxu](https://github.com/jokerxuxu)
 - Google Scholar：[YOUR_SCHOLAR_ID](https://scholar.google.com/citations?user=YOUR_SCHOLAR_ID) <!-- TODO -->
-- 邮箱：[YOUR_EMAIL@example.com](mailto:YOUR_EMAIL@example.com) <!-- TODO -->
+- 邮箱：[suzhongyu@zju.edu.cn](mailto:suzhongyu@zju.edu.cn) <!-- TODO -->
