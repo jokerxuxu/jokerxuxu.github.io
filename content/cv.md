@@ -15,7 +15,7 @@ comments: false
 
 ## Research experience
 
-**Undergraduate researcher** — [Lab / group], 2026 – present <!-- TODO -->
+**Undergraduate researcher** — [Research Group of Prof. Tiefeng Li, Zhejiang University], 2026 – present <!-- TODO -->
 
 - Modeling and simulating a tendon-driven biomimetic hand in MuJoCo.
 - Implementing joint-space control with tendon-level force allocation.

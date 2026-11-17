@@ -25,6 +25,7 @@ pagination:
 taxonomies:
   tag: tags
   category: categories
+  series: series
 
 outputs:
   home:
