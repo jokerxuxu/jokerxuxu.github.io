@@ -1,5 +1,5 @@
 ---
-title: "From controllers to policy gradients: a roboticist's first pass at LLM RL"
+title: "Datawhale Agentic RL Task1: a roboticist's first pass at LLM RL"
 date: 2026-11-17
 summary: "A first LLM RL run on PyTRIO, and GRPO told in robot-RL vocabulary: why a baseline reduces variance, why a group mean is enough, and where my control intuition breaks."
 tags: ["reinforcement-learning", "GRPO", "PyTRIO", "LLM", "study-notes"]

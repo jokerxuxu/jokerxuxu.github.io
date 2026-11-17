@@ -1,5 +1,5 @@
 ---
-title: "从控制器到策略梯度：一个机器人方向读者的 LLM 强化学习入门"
+title: "Datawhale Agentic RL Task1：一个机器人方向读者的 LLM 强化学习入门"
 date: 2026-11-17
 summary: "在 PyTRIO 上跑通第一次 LLM 强化学习，并用控制系统的语言重讲一遍 GRPO：baseline 为什么能降方差、组内均值为什么够用，以及我的控制直觉在哪一步失效。"
 tags: ["强化学习", "GRPO", "PyTRIO", "LLM", "组队学习"]
