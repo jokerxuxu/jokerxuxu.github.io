@@ -253,7 +253,42 @@ Five readings:
 
 At this point all of GRPO's novelty sits in the advantage: the weight function is reused wholesale from PPO, and only the estimate of the advantage changes. It is not free either — dropping the critic costs $G-1$ extra samples per question.
 
-## 6. Still unresolved
+## 6. Ten steps, measured: three readings and one coincidence
+
+This is the repo's default demo: `--steps 10 --batch-size 4 --group-size 8 --max-tokens 512 --loss-fn importance_sampling`, Qwen3.5-4B on GSM8K, logged to SwanLab.
+
+Training record: [SwanLab · agentic-rl-lab-grpo](https://swanlab.cn/@jokerxuxu/agentic-rl-lab-grpo/v1/liwxpw/runs/2gmiydii/chart). The charts and the table below all come from this single run.
+
+| step | reward | degenerate | avg_gen_len | loss_mean |
+| --- | --- | --- | --- | --- |
+| 0 | 1.000 | 100% | 186.7 | — |
+| 1 | 0.875 | 75% | 253.9 | 0.0540 |
+| 2 | 0.750 | 0% | 380.7 | 0.0445 |
+| 3 | 0.750 | 100% | 266.9 | — |
+| 4 | 0.781 | 75% | 294.5 | −0.0271 |
+| 5 | 0.781 | 25% | 275.4 | 0.0627 |
+| 6 | 1.000 | 100% | 250.8 | — |
+| 7 | 0.938 | 50% | 258.4 | 0.0286 |
+| 8 | 0.969 | 75% | 224.3 | 0.0259 |
+| 9 | 0.875 | 50% | 237.1 | 0.0173 |
+
+![Group-mean reward over ten steps, with no trend](/images/agentic-rl/grpo-demo-reward.png)
+
+**One: reward barely moves.** It bounces between 0.75 and 1.0 with no trend, and the reason is easy to guess: GSM8K is too easy for Qwen3.5-4B, which was already perfect at step 0. **Ten steps cannot show learning** — that is expected, not a failure.
+
+![More than half the steps waste entire groups](/images/agentic-rl/grpo-demo-degenerate.png)
+
+**Two: a coincidence you can only find by looking at the data — the three steps with 100% degenerate (0, 3, 6) have no loss record at all.** The whole batch was wasted, so the code skipped it and produced zero datums. I did not spot this in the curve; I found it by lining up the missing CSV values with `frac_degenerate = 1`. It turns "the group is wasted" from section 3 into something checkable: **a missing loss line is not a logging bug, it is a step where nothing was learned.**
+
+![Loss jumps across sign; its mean has no absolute meaning](/images/agentic-rl/grpo-demo-loss.png)
+
+**Three: length swings a lot and proves nothing.** 187 → 381 → 237, with step 2 the longest — and step 2 is the only one with zero degenerate groups. Ten steps are too few to claim "longer means smarter" or "longer means length hacking".
+
+![Mean generation length: step-to-step noise beats any trend](/images/agentic-rl/grpo-demo-genlen.png)
+
+So this run proves the **pipeline**, not the algorithm: environment wired up, credits spent, curves logged, weights saved. Which of the three losses is steadier needs a seed-fixed comparison with everything else held constant; at ten steps the noise is larger than the signal.
+
+## 7. Still unresolved
 
 - That reward design matters more than the algorithm is something I currently believe rather than have evidence for.
 - I will keep going on GRPO next.
