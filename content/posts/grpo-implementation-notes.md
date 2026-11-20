@@ -1,7 +1,7 @@
 ---
 title: "Datawhale Agentic RL Task2: reading GRPO from the formula down to the code"
 date: 2026-11-20
-summary: "A section-by-section read of the agentic-rl-lab GRPO implementation, then running importance_sampling, ppo and cispo myself: only 112 of 320 sampled completions reached the update, the same configuration differs by 30% between two days, and the probability ratio never left 1 — so the clip never fired."
+summary: "A section-by-section read of the agentic-rl-lab GRPO implementation, then running importance_sampling, ppo and cispo myself and comparing with another record from the group: only 35% of sampled completions reached the update, the same configuration differs by 30% between two days, and the probability ratio is identically 1 in this demo — so the clip never fires and the three losses cannot be separated structurally."
 tags: ["reinforcement-learning", "GRPO", "PyTRIO", "implementation", "study-notes"]
 categories: ["Study Notes"]
 series: ["Agentic RL Lab"]
@@ -13,7 +13,7 @@ ShowToc: true
 
 The previous note (Task 01) was about the "why": why the baseline can become a group mean, and how the IS / PPO / CISPO weight functions fall out. This one is about the "how" — reading `experiments/grpo/01-demo-sync.py` end to end, and then going back to what my actual run on this machine left behind.
 
-Section 4 is the part where I ran things myself: `importance_sampling`, `ppo` and `cispo` on the same machine, plus **a repeat of one unchanged configuration**. I read the results side by side with an independent record from a study partner ([Task02 打卡：用 PyTRIO 在 GSM8K 上跑通 GRPO](https://zhuanlan.zhihu.com/p/2106862160429295432)).
+Section 5 compares my runs with the two records a study partner left (a 10-step post and a later async 200-step run), and section 4 is the part where I ran things myself: `importance_sampling`, `ppo` and `cispo` on the same machine, plus **a repeat of one unchanged configuration**. I read the results side by side with an independent record from a study partner ([Task02 打卡：用 PyTRIO 在 GSM8K 上跑通 GRPO](https://zhuanlan.zhihu.com/p/2106862160429295432)).
 
 Up front: **the GRPO implementation is much shorter than the formulas.** What is hard is never typing the equation into code; it is the places where a mistake raises no error and simply makes the model learn something subtly wrong: the policy snapshot used for sampling, the right-shift alignment, degenerate groups, and the question of whether a step with no data should update at all.
 
@@ -370,6 +370,8 @@ $$
 \rho_t=\exp(\log\pi_{W_k}(o_t)-\log\pi_{W_k}(o_t))\equiv 1 .
 $$
 
+![Weight flow inside one step: sampling and the forward pass share the same $W_k$, so the ratio is identically 1](/images/agentic-rl/grpo-ratio-one.png)
+
 The measured $1\pm5.3\times10^{-4}$ is numerical noise from the forward pass (batched inference versus decoding during sampling), not policy drift — over ten steps it shows no trend, it just random-walks around 1.
 
 Substituting into the three formulas in the [PyTRIO docs](https://docs.pytrio.com/docs/guide/loss_fn):
@@ -405,8 +407,13 @@ Measured on the same 40 questions across the four runs:
 | Check | Result |
 | --- | --- |
 | IS 11-17 vs IS 11-20 (two independent samples) | same sign on 6/6 shared steps |
-| IS/PPO consensus vs CISPO | opposite sign on 5/6 steps (the exception, step 1, has PPO = −0.0011, essentially a tie) |
-| $\lvert L_{\text{CISPO}}\rvert/\lvert L_{\text{IS}}\rvert$ | 0.20–1.47, mean ≈ 0.73 → consistent with $h\approx0.2$–$1.5$ nats/token |
+| IS (mean of the two) vs CISPO | **opposite sign on 6/6 steps** |
+| PPO vs the IS consensus | same sign on 5/6 steps (the exception, step 1, has PPO = −0.0011, essentially a tie) |
+| fit through the origin, $L_{\text{CISPO}}=-h\,L_{\text{IS}}$ | $h=0.78$ nats/token |
+
+![Left: the CISPO loss is the mirror image of the IS loss, and the slope is the policy entropy; right: a per-step sign matrix in which the CISPO row mirrors the two IS rows](/images/agentic-rl/grpo-loss-sign.png)
+
+The right panel shows the mirror most clearly: **the two IS rows are nearly identical (two independent samples), while the CISPO row is flipped overall.** Even *which* steps go negative is the same set of steps (step 4), with the opposite sign.
 
 So **"CISPO's loss is systematically negative" is not a coincidence — it is what the formula says** (it multiplies the logprob rather than the ratio).
 
@@ -432,11 +439,64 @@ What reproduced is **structural**: CISPO's loss sits below zero almost always (i
 
 **In other words, that length curve is mostly the difficulty profile of these 40 questions, not a dynamic of GRPO** — any algorithm, or even a random baseline, would draw the same shape. Which is the real reason "structural claims reproduce and numeric ones do not": **what reproduces is the shared experimental setup (the same questions, the same script, the same formula structure), not a property of the algorithm.**
 
+![Left: the generation-length curves of the four runs almost coincide; right: the pairwise correlation matrix — length correlates strongly, degenerate groups do not](/images/agentic-rl/grpo-shared-questions.png)
+
+The correlation matrix on the right spells it out: the length block is deep red at **r = 0.87–0.98**, the `frac_degenerate` block only **0.20–0.80**, reward in between. **The higher the correlation, the more the curve is given by the questions rather than by training.**
+
 ### 4.4 Timing: the custom loss is not more expensive
 
 The three 11-20 runs took 352 s (IS), 360 s (PPO) and 320 s (CISPO) — within 40 s of each other, and that is the same order as the SwanLab upload stalls. **At ten steps you cannot measure the extra cost of a custom loss**; you would need many more steps and logging disabled for a fair comparison.
 
-## 5. Implementation details worth keeping
+## 5. Comparing notes with my study partner
+
+There is another study partner in the group, Kevin, with two Task 02 records:
+
+1. **The Zhihu post** — [Task02 打卡：用 PyTRIO 在 GSM8K 上跑通 GRPO](https://zhuanlan.zhihu.com/p/2106862160429295432): the sync script, 10 steps × 3 losses, exactly the same setup as my first run, so it compares item by item.
+2. **A later async long run** — a SwanLab panel with three `grpo-async-qwen35-4b-gsm8k-*-steps200` runs (screenshot taken while running, at ~115 steps). The async script submits the four rollouts of a batch concurrently (`gather`), which drops a step from ~33 s to ~8 s and makes 200 steps affordable.
+
+### 5.1 Item by item (sync, 10 steps)
+
+| Metric | my IS 11-20 | my PPO | my CISPO | his IS | his PPO | his CISPO |
+| --- | --- | --- | --- | --- | --- | --- |
+| starting reward | 1.000 | 0.969 | 1.000 | 1.000 | 1.000 | 1.000 |
+| final reward | 0.938 | 0.938 | 0.938 | 0.938 | 0.938 | 0.969 |
+| lowest reward | 0.719 (s3) | 0.750 (s3) | 0.688 (s3) | 0.656 (s3) | 0.688 (s3) | 0.750 (s3) |
+| mean reward (1–9) | 0.920 | 0.878 | 0.892 | ≈0.882 | ≈0.900 | ≈0.868 |
+| frac_degenerate range | 50–100% | 25–100% | 25–100% | 50–100% | 25–100% | 0–100% |
+| completions used | 80 | 128 | 112 | 96 | 96 | 112 |
+| train_tokens | 25.9k | 41.2k | 35.4k | 33.1k | 29.4k | 39.4k |
+| loss_mean negative | 1/8 | 3/9 | **7/8** | 3/9 | 0/9 | 6/8 |
+| gen_len peak → end | 365→293 | 373→225 | 370→253 | 344→279 | 366→204 | 414→242 |
+| wall clock per run | 352 s | 360 s | 320 s | 638 s | 539 s | 678 s |
+
+**What agrees (the structural kind):**
+
+- **Starting reward is 1.000 everywhere**: the model is too strong, step 0 is already all correct, and degenerate is high from the start.
+- **Reward bottoms out around step 3 and recovers**: my minima are all at step 3, his are too. **That is not a coincidence** — both runs walk the same 40 questions in the same order, so the difficulty profile is shared (the correlation matrix in §4.3).
+- **"Longer first, then converges"**: my gen_len peaks at step 2 (365–373), his at step 2 as well (344–414).
+- **CISPO's loss sits systematically below zero**: 6/8 for him, 7/8 for me (the $-hL_{\text{IS}}$ relation of §4.2.2).
+
+**What does not agree (the numeric kind):**
+
+- **"PPO's loss is positive throughout"**: 0/9 for him, 3/9 for me. And PPO and IS are the same function at $\rho=1$, so this is not an algorithmic difference but a lottery difference (§4.2.2).
+- **"The custom loss is slower"**: his CISPO 678 s vs IS 638 s (+6%), while mine has CISPO 320 s, faster than IS at 352 s. The mechanism is genuinely more expensive, but unmeasurable at this scale (§4.2.3).
+- **The ranking of effective sample sizes**: his 96/96/112, mine 80/128/112. **The orderings disagree entirely** — because all of those columns sit inside the ±30% noise floor anyway.
+
+### 5.2 The async 200-step runs did not change the conclusion
+
+Three things can be read off his panel:
+
+1. **Reward shows no upward trend over ~115 steps** (oscillating between 0.5 and 1.0, dipping to ~0.1) → "ten steps cannot show learning" upgrades to "**a hundred steps cannot show learning either**".
+2. **The sign structure of loss_mean matches my derivation**: the CISPO curve is almost entirely below zero, while PPO and IS are mostly above it.
+3. **gen_len oscillates between 100 and 400 with no trend**, and `frac_degenerate` swings between ~0.1 and 1.0 → same conclusion as my ten steps: these quantities are mostly decided by the questions.
+
+**But the crucial point is that switching to async and running 200 steps still does not separate the three losses.** `02-demo-async.py`, like the sync version, **re-snapshots the sampler every step** (`save_weights_and_get_sampling_client_async()`, `:650`), and only runs `forward_backward` + `optim_step` after every rollout has come back (`:708`, `:737`) — so $\rho\equiv1$ holds in the async version too, and the clip still can never fire.
+
+**That is harder than the "not enough statistical power" story I told earlier: it is not the number of steps, and not the sync/async difference — it is structural.** Apart from the value offset (exactly what $-hL_{\text{IS}}$ predicts), every difference between the three curves is sampling noise.
+
+(His SwanLab project is private, so I cannot pull his raw metrics; this paragraph is a qualitative comparison only. The table in §5.1 uses the numbers printed in his post.)
+
+## 6. Implementation details worth keeping
 
 These are the things that only show up when you read the code *and* look at your own run; the tutorial text does not mention them:
 
@@ -447,9 +507,21 @@ These are the things that only show up when you read the code *and* look at your
 5. **Every step saves an anonymous weight snapshot.** `save_weights_and_get_sampling_client()` is called once per step, so the framework handles "one old policy per step" for you — which is why this demo needs no hand-written weight synchronisation.
 6. **The local torch is a CPU build, but custom losses really use it.** The CPU torch only starts working when `forward_backward_custom` sends logprobs back for a local loss computation.
 7. **The log contains two loss fields.** `loss_mean` and `loss` hold the same value; other trainer keys are prefixed `trainer/`, and CISPO's own metrics keep a `cispo/` prefix — so filter by name when exporting CSVs instead of staring only at `reward`.
-8. **It still runs when `huggingface.co` is unreachable.** During the second batch of runs HF was completely unreachable, and `load_dataset` hung on HEAD retries for several minutes. GSM8K was already in the local cache, so `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1` starts it straight from disk. **If you have already downloaded your data once, do not let the training script die on an unrelated connectivity check.**
+8. **You can pull the metrics back afterwards instead of watching the panel.** The SwanLab Python SDK fetches a run's full per-step history locally:
 
-## 6. Where this demo differs from the paper's GRPO
+   ```python
+   import swanlab
+   api = swanlab.Api()
+   exp = api.run("jokerxuxu/agentic-rl-lab-grpo/2gmiydii")
+   m = exp.metrics(keys=["reward", "frac_degenerate", "loss_mean", "train_tokens"])
+   # m["list"] -> [{"key": ..., "metrics": [{"index": step, "data": v, "timestamp": ms}]}]
+   print(exp.summary()["reward"])   # also gives min / max / avg / median / stdDev
+   ```
+
+   Every figure in this note was redrawn from data pulled this way (cleaner than exporting CSVs by hand, and it reaches metrics like `cispo/clip_fraction`). **Advice: run first, pull everything once, analyse afterwards.**
+9. **It still runs when `huggingface.co` is unreachable.** During the second batch of runs HF was completely unreachable, and `load_dataset` hung on HEAD retries for several minutes. GSM8K was already in the local cache, so `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1` starts it straight from disk. **If you have already downloaded your data once, do not let the training script die on an unrelated connectivity check.**
+
+## 7. Where this demo differs from the paper's GRPO
 
 Three simplifications were made to keep the pipeline legible (the tutorial's own readme lists them too):
 
@@ -463,9 +535,10 @@ The paper's GRPO also separates $\pi_{\text{old}}$ from $\pi_{\text{ref}}$: the 
 
 One demo-specific simplification deserves its own line: **the advantage is broadcast across the whole answer.** Paper GRPO does this too (the missing token-level credit assignment is exactly what DAPO / GSPO / Dr.GRPO address), but "the code does it this way" and "the algorithm is defined this way" are two different statements.
 
-## 7. Next
+## 8. Next
 
-- **Make $\rho\neq1$ if you want to compare the three losses.** Right now they are the same function (§4.2.1), so more steps or a bigger learning rate will not help. Two workable routes: several inner epochs over the same datums (from the second epoch on, $\rho$ departs from 1), or a deliberately stale sampler (stale weights, genuinely off-policy). This is also where the clip actually fires in the DAPO/GSPO-style setups.
+- **Make $\rho\neq1$ if you want to compare the three losses.** Right now they are the same function (§4.2.1), so more steps, a bigger learning rate, or switching between sync and async will not help — the study partner's async 200-step runs did not separate them either (§5.2). Two workable routes: several inner epochs over the same datums (from the second epoch on, $\rho$ departs from 1), or a deliberately stale sampler (stale weights, genuinely off-policy). This is also where the clip actually fires in the DAPO/GSPO-style setups.
+- **Run a small "inner epoch" experiment to verify this.** Five lines of change: call `forward_backward` + `optim_step` twice on the same `datums`, then check whether `cispo/ratio_mean` visibly departs from 1, whether `clip_fraction` becomes non-zero, and whether the three loss curves finally fork. That is the shortest path from "the clip never fires" as a derivation to a measurement.
 - **Raise the group size and the task difficulty.** The current bottleneck is that 60–75% of sampling is thrown away: GSM8K is too easy for Qwen3.5-4B, and step 0 is already all correct. Try harder questions (MATH), or raise `group_size` from 8 to 16, and see whether `frac_degenerate` drops.
 - **Pair every comparison with a repeat of the same configuration.** That 30% noise floor from §4.1 was the most expensive lesson of this batch: without a repeat you cannot tell an algorithmic difference from luck.
 - **Fix the questions and add a fixed evaluation set.** If the length curve correlates at r≈0.9 across runs, the curve is decided by the questions; to see whether the policy improved you need the same batch every step plus a held-out set that never trains. This is the requirement that came out of the observation in §3.3.

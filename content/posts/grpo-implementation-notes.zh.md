@@ -1,7 +1,7 @@
 ---
 title: "Datawhale Agentic RL Task2：把 GRPO 从公式读到代码"
 date: 2026-11-20
-summary: "逐段读 agentic-rl-lab 的 GRPO 实现，再自己把 importance_sampling / ppo / cispo 三种 loss 各跑一遍：320 条采样只有 112 条进入更新，同一份配置两次跑就差 30%，而概率比始终贴着 1，clip 一次都没触发。"
+summary: "逐段读 agentic-rl-lab 的 GRPO 实现，再自己把 importance_sampling / ppo / cispo 三种 loss 各跑一遍，并和同组另一份记录对照：信号预算只有 35%，同一份配置两次跑就差 30%，而这个 demo 里概率比恒等于 1，clip 一次都没触发——所以三种 loss 在结构上就分不开。"
 tags: ["强化学习", "GRPO", "PyTRIO", "实现", "组队学习"]
 categories: ["学习笔记"]
 series: ["Agentic RL Lab"]
@@ -13,7 +13,7 @@ ShowToc: true
 
 上一篇（Task01）讲的是"为什么"：baseline 为什么能换成组内均值、IS / PPO / CISPO 三个力度函数怎么推。这一篇讲"怎么写"——把 `experiments/grpo/01-demo-sync.py` 从头到尾读一遍，看清每一步在干什么；然后回头看这台机器上真的跑过的那次 run 留下了什么。
 
-第四节是我自己动手的部分：把 `importance_sampling` / `ppo` / `cispo` 三种 loss 在同一台机器上各跑一遍，另外加一次**同配置的重复 run**。结果和一位学习搭子的独立记录对照着读（他的那篇：[Task02 打卡：用 PyTRIO 在 GSM8K 上跑通 GRPO](https://zhuanlan.zhihu.com/p/2106862160429295432)）。
+第五节是和一些外部记录（搭子的两版实验）的对照，第四节是我自己动手的部分：把 `importance_sampling` / `ppo` / `cispo` 三种 loss 在同一台机器上各跑一遍，另外加一次**同配置的重复 run**。结果和一位学习搭子的独立记录对照着读（他的那篇：[Task02 打卡：用 PyTRIO 在 GSM8K 上跑通 GRPO](https://zhuanlan.zhihu.com/p/2106862160429295432)）。
 
 先给结论：**GRPO 的实现比公式短得多。** 难的从来不是把公式敲进代码，而是那些"写错了也不报错，只是悄悄学歪"的地方：采样时的策略快照、右移对齐、退化组、以及"没数据的那一步到底该不该更新"。
 
@@ -370,6 +370,8 @@ $$
 \rho_t=\exp(\log\pi_{W_k}(o_t)-\log\pi_{W_k}(o_t))\equiv 1 .
 $$
 
+![一个 step 里的权重流向：采样和前向用同一份 W_k，所以概率比恒等于 1](/images/agentic-rl/grpo-ratio-one.png)
+
 实测的 $1\pm5.3\times10^{-4}$ 是前向的数值差异（批量前向 vs 采样时解码），不是策略漂移——十步下来它没有趋势，只是随机游走。
 
 代入 [PyTRIO 官方文档](https://docs.pytrio.com/docs/guide/loss_fn) 给的三个公式：
@@ -405,8 +407,13 @@ $$
 | 检验 | 结果 |
 | --- | --- |
 | IS 11-17 vs IS 11-20（两次独立抽样） | 6/6 个共有步同号 |
-| IS/PPO 的共识 vs CISPO | 5/6 步反号（唯一例外 step 1，PPO = −0.0011，几乎打平） |
-| $\lvert L_{\text{CISPO}}\rvert/\lvert L_{\text{IS}}\rvert$ | 0.20–1.47，均值 ≈ 0.73 → 对应 $h\approx0.2$–$1.5$ nats/token |
+| IS（两次均值） vs CISPO | **6/6 步反号** |
+| PPO vs IS 的共识 | 5/6 步同号（唯一例外 step 1，PPO = −0.0011，几乎打平） |
+| 过原点拟合 $L_{\text{CISPO}}=-h\,L_{\text{IS}}$ | $h=0.78$ nats/token |
+
+![左：CISPO 的 loss 与 IS 的 loss 反号，斜率就是策略熵；右：逐步的 loss 符号矩阵，CISPO 那一行几乎是 IS 两行的镜像](/images/agentic-rl/grpo-loss-sign.png)
+
+右图那个镜像关系看得最清楚：**IS 的两行几乎一模一样（都是独立抽样），而 CISPO 那一行整体反号**。连"哪几步出现负号"都是同一组步（步 4），只是符号相反。
 
 所以 **"CISPO 的 loss 系统性偏负"不是巧合，是公式本身决定的**（它乘的是 logprob 而不是 ratio）。
 
@@ -432,11 +439,64 @@ $$
 
 **换句话说，那条长度曲线主要是这 40 道题的难度剖面，而不是 GRPO 的动力学**——换成任何算法、甚至一条随机基线，也会画出同样的形状。反过来说，这正是"结构性结论能复现、数值性结论不能"的真正原因：**复现的是共享的实验条件（同一批题、同一段脚本、同一套公式结构），不是算法的性质。**
 
+![左：四次 run 的生成长度曲线几乎重合；右：两两相关系数矩阵——长度高相关，退化组低相关](/images/agentic-rl/grpo-shared-questions.png)
+
+右边的相关系数矩阵把这件事摊开了：长度那一块是 **r = 0.87–0.98** 的深红，`frac_degenerate` 那块只有 **0.20–0.80**，而 reward 居中。**相关性越高，说明这条曲线越是"题目给的"而不是"训练给的"。**
+
 ### 4.4 耗时：custom loss 没有更贵
 
 三次 11-20 的 run 分别是 352 s（IS）、360 s（PPO）、320 s（CISPO），差距在 40 秒以内，而且这个量级和 SwanLab 上传等待同阶。**在 10 步这个规模上测不出 custom loss 的额外开销**；要测得把步数拉长，并关掉日志同步再对比。
 
-## 五、跑完这一遍之后，记下来的实现细节
+## 五、和搭子的两份记录对照
+
+组里还有一位学习搭子 Kevin，他留下了两份 Task02 记录：
+
+1. **知乎那篇**《[Task02 打卡：用 PyTRIO 在 GSM8K 上跑通 GRPO](https://zhuanlan.zhihu.com/p/2106862160429295432)》——同步脚本、10 步 × 3 组 loss，和我第一次跑的设置完全一样，可以逐项对照；
+2. **后来的一组异步长跑**——SwanLab 面板上三条 `grpo-async-qwen35-4b-gsm8k-*-steps200`（跑的时候截的图，已经到 ~115 步）。异步脚本把 batch 内 4 道题的 rollout 并发提交（`gather`），单步从 ~33 s 降到 ~8 s，所以 200 步才跑得起来。
+
+### 5.1 逐项对照（同步 10 步）
+
+| 指标 | 我 IS 11-20 | 我 PPO | 我 CISPO | 搭子 IS | 搭子 PPO | 搭子 CISPO |
+| --- | --- | --- | --- | --- | --- | --- |
+| 起点 reward | 1.000 | 0.969 | 1.000 | 1.000 | 1.000 | 1.000 |
+| 最终 reward | 0.938 | 0.938 | 0.938 | 0.938 | 0.938 | 0.969 |
+| reward 最低点 | 0.719 (s3) | 0.750 (s3) | 0.688 (s3) | 0.656 (s3) | 0.688 (s3) | 0.750 (s3) |
+| 平均 reward（1–9） | 0.920 | 0.878 | 0.892 | ≈0.882 | ≈0.900 | ≈0.868 |
+| frac_degenerate 区间 | 50–100% | 25–100% | 25–100% | 50–100% | 25–100% | 0–100% |
+| 有效 completion | 80 | 128 | 112 | 96 | 96 | 112 |
+| train_tokens | 25.9k | 41.2k | 35.4k | 33.1k | 29.4k | 39.4k |
+| loss_mean 为负 | 1/8 | 3/9 | **7/8** | 3/9 | 0/9 | 6/8 |
+| gen_len 峰→末 | 365→293 | 373→225 | 370→253 | 344→279 | 366→204 | 414→242 |
+| 单组耗时 | 352 s | 360 s | 320 s | 638 s | 539 s | 678 s |
+
+**吻合的（结构性的）：**
+
+- **起点 reward 全是 1.000，模型太强**：两边都撞到"第 0 步就全对"，degenerate 从一开始就高位。
+- **reward 在 step 3 附近触底后回升**：我的最低点全在 step 3，他的也在 step 3。**这不是巧合**——大家跑的是同样的前 40 道题、同样的顺序，难度剖面是共享的（4.3 节那张相关矩阵）。
+- **"先变长探索、再收敛"**：我的 gen_len 峰在 step 2（365–373），他的也在 step 2（344–414）。
+- **CISPO 的 loss 系统性偏负**：他 6/8，我 7/8（4.2.2 节推的 $-hL_{\text{IS}}$ 关系）。
+
+**不吻合的（数值性的）：**
+
+- **"PPO 的 loss 全程为正"**：他 0/9，我 3/9。而 PPO 和 IS 在 $\rho=1$ 处是同一个函数，所以这不是算法差异，是抽签差异（4.2.2 节）。
+- **"custom loss 更慢"**：他 CISPO 678 s vs IS 638 s（+6%），我 CISPO 320 s 反而比 IS 352 s 快。机制上确实更贵，但这个规模测不出来（4.2.3 节）。
+- **有效样本量排序**：他 96/96/112，我 80/128/112。**排序完全不同**——因为这三列本来就都在噪声地板（±30%）以内。
+
+### 5.2 异步 200 步那组：更长的实验也没有改变结论
+
+从他那张面板上能读到三条：
+
+1. **reward 在 ~115 步里始终没有上升趋势**（0.5–1.0 之间振荡，最深掉到 ~0.1）→ 把"10 步看不出学习"升级成"**上百步也看不出学习**"；
+2. **loss_mean 的符号结构和我的推导一致**：CISPO 那条几乎全程在零以下，PPO 和 IS 那两条大多在零以上；
+3. **gen_len 在 100–400 之间无趋势振荡**，frac_degenerate 在 ~0.1–1.0 之间振荡 → 和我 10 步那次的结论一样：这些量主要由题目决定。
+
+**但最关键的一点是：换成异步、跑 200 步，三种 loss 依然分不开。** 因为 `02-demo-async.py` 和同步版一样，**每步都重新 `save_weights_and_get_sampling_client_async()`**（`:650`），rollout 全部收齐之后才 `forward_backward` + `optim_step`（`:708`、`:737`）——所以 $\rho\equiv1$ 在异步版里同样成立，clip 依然永远没有机会触发。
+
+**这比我上一轮说的"统计功效不够"更硬：不是步数不够、不是同步异步的差别，是结构上就分不开。** 三条曲线里除了那个值偏移（正是 $-hL_{\text{IS}}$ 预测的），其余差异全是抽样噪声。
+
+（他那个 SwanLab project 是 private，我拿不到原始指标，所以这一段只能定性对照；上面 5.1 那张表用的是他那篇文章里的数字。）
+
+## 六、跑完这一遍之后，记下来的实现细节
 
 这些是读代码 + 看自己的 run 才注意到的东西，教程正文里不会写：
 
@@ -453,9 +513,21 @@ $$
 6. **本地 torch 是 CPU 版，但 custom loss 真的会用到它。** 只有 `forward_backward_custom` 会把 logprob 送回本地算 loss，这时 CPU torch 才开始工作。
 
 7. **日志里有两个 loss 字段。** `loss_mean` 和 `loss` 内容相同，另外 trainer 返回的其他键会被加上 `trainer/` 前缀，CISPO 自己的指标保留 `cispo/` 前缀——所以导出 CSV 时按名字筛，别只盯着 `reward`。
-8. **`huggingface.co` 断了也能跑。** 第二次跑三组实验时 HF 完全连不上（`load_dataset` 卡在 HEAD 请求重试里好几分钟）。GSM8K 已经在本地缓存里，所以加上 `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1` 就直接读缓存启动，不用等网络。**如果你的数据已经下过一次，就别让训练脚本死在一次无关的联网检查上。**
+8. **指标可以事后拉回来，不用守着面板看。** SwanLab 的 Python SDK 能直接把某个 run 的完整逐步指标取回本地：
 
-## 六、和论文版 GRPO 的差距
+   ```python
+   import swanlab
+   api = swanlab.Api()
+   exp = api.run("jokerxuxu/agentic-rl-lab-grpo/2gmiydii")
+   m = exp.metrics(keys=["reward", "frac_degenerate", "loss_mean", "train_tokens"])
+   # m["list"] -> [{"key": ..., "metrics": [{"index": step, "data": v, "timestamp": ms}]}]
+   print(exp.summary()["reward"])   # 还会给 min / max / avg / median / stdDev
+   ```
+
+   我这四次 run 的分析图，全部是从这里拉的原始数据重画的（比在面板上手工导出 CSV 干净，而且能拿到 `cispo/clip_fraction` 这类额外指标）。**建议：跑的时候只管跑，分析的时候一次把数据拉全。**
+9. **`huggingface.co` 断了也能跑。** 第二次跑三组实验时 HF 完全连不上（`load_dataset` 卡在 HEAD 请求重试里好几分钟）。GSM8K 已经在本地缓存里，所以加上 `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1` 就直接读缓存启动，不用等网络。**如果你的数据已经下过一次，就别让训练脚本死在一次无关的联网检查上。**
+
+## 七、和论文版 GRPO 的差距
 
 这份 demo 为了讲清楚链路，做了三处简化（教程自己在 readme 里也列了）：
 
@@ -469,9 +541,10 @@ $$
 
 还有一个 demo 特有的简化值得单独点名：**advantage 广播到整条回答**。论文版 GRPO 也是这么做的（token 级信用分配的缺失正是 DAPO / GSPO / Dr.GRPO 要处理的问题），但知道"这份代码就这么写"和"算法本来就这样"是两件事。
 
-## 七、下一步
+## 八、下一步
 
-- **想让三种 loss 真的分开，必须让 $\rho\neq1$。** 现在它们在 $\rho=1$ 处是同一个函数（4.2.1），加步数、提学习率都没用。可行的做法有两条：同一批 datums 做多个 inner epoch（第二个 epoch 起 $\rho$ 才偏离 1），或者故意让采样器落后于 trainer（stale weights，真正的 off-policy）。这也是 DAPO/GSPO 那些方法里 clip 真正会触发的地方。
+- **想让三种 loss 真的分开，必须让 $\rho\neq1$。** 现在它们在 $\rho=1$ 处是同一个函数（4.2.1），加步数、提学习率、换同步异步都没用——搭子那组异步 200 步也没分开（5.2 节）。可行的做法只有两条：同一批 datums 做多个 inner epoch（第二个 epoch 起 $\rho$ 才偏离 1），或者故意让采样器落后于 trainer（stale weights，真正的 off-policy）。这也是 DAPO/GSPO 那些方法里 clip 真正会触发的地方。
+- **做一个"inner epoch 版"的小实验来验证这件事。** 改 5 行代码：同一批 `datums` 连着调两次 `forward_backward` + `optim_step`，然后看 `cispo/ratio_mean` 是否明显偏离 1、`clip_fraction` 是否开始非零、三条 loss 曲线是否终于分叉。这是把"clip 从没触发"从推论变成实验的最短路径。
 - **加大 group size、提高任务难度。** 现在的瓶颈是 60–75% 的采样被丢掉：GSM8K 对 Qwen3.5-4B 太简单，第 0 步就全对。换成更难的题（比如 MATH），或者把 `group_size` 从 8 加到 16，看看 `frac_degenerate` 会不会掉下来。
 - **每次比较都配一个同配置的重复 run。** 4.1 节那 30% 的噪声地板是这次最贵的教训：不做重复，就分不清"算法差异"和"这次运气"。
 - **固定题目 + 固定评测集。** 既然四条 run 的长度曲线相关到 r≈0.9 说明曲线由题目决定，那要评估"策略有没有变好"，就得每步用同一批题、并且另有一个不参与训练的固定评测集。这是 3.3 节那个观察逼出来的需求。
