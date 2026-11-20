@@ -41,7 +41,11 @@ Two things the tutorial keeps warning about, and that a first-timer will almost 
 1. **The local torch is CPU-only.** `pyproject.toml` pins a `pytorch-cpu` index; do not "helpfully" swap in the CUDA build. It only does real work when you pass a custom loss through `forward_backward_custom`.
 2. **Every command needs `uv run`.** `trio` and `swanlab` live inside `.venv`; from a system shell you get command not found.
 
-<!-- TODO: add your own gotchas (network, HF cache, quota), if any. -->
+Before the first run, it is also worth checking these three things:
+
+3. **Check the network in stages.** Dependency installation, the Hugging Face download and the cloud training request are three different stages; when something times out, look at which stage the log stops in first and then check that stage's network and proxy settings, instead of restarting the whole training over and over.
+4. **Leave room for the HF cache.** The model, tokenizer and dataset downloads can take a lot of local disk; when space is tight, point `HF_HOME` at a directory with enough capacity and keep the path consistent across runs, so nothing is downloaded twice.
+5. **Run small first, then look at the quota.** Use the ten-step demo above to verify the pipeline and check the remaining quota on the cloud account and the actual consumption; only then increase the number of steps, the batch size, the group size or the generation length.
 
 **The cloud turns owning compute into calling compute**, and for anyone without a lab machine that is the precondition for this whole exercise.
 
