@@ -351,7 +351,70 @@ $$
 
 then all three losses **took the same branch** during this batch. Task 01's conclusion — that the difference between the three losses is compressed into a one-dimensional force function $w(\rho)$ — is right, but it presumes the different regions of $w$ are actually visited. Here, none of them was.
 
-**So the conclusion "ten steps cannot separate them" has to be rewritten: it is not that there were too few steps, it is that $\rho$ never left 1, so the differences between the three losses never got a chance to act.** To separate them you have to make $\rho$ actually move: a larger learning rate, more steps, or more distance between sampling and the update.
+**So the conclusion "ten steps cannot separate them" has to be rewritten: it is not that there were too few steps, it is that $\rho$ never left 1, so the differences between the three losses never got a chance to act.**
+
+### 4.2.1 Worse: in this demo $\rho$ is identically 1
+
+Push that one step further and the previous paragraph turns out to be wrong in its explanation: the clip does not fail to fire because the learning rate is small — it is **structurally impossible to fire**. Look at the order of operations:
+
+```python
+sampling_client = training_client.save_weights_and_get_sampling_client()  # snapshot W_k
+...                                                                      # sample with W_k → sampling_logprobs = log π_{W_k}(o)
+fwd_bwd_future = training_client.forward_backward(datums, loss_fn=...)    # forward with W_k → target_logprobs = log π_{W_k}(o)
+optim_future = training_client.optim_step(adam_params)                    # W_k → W_{k+1}
+```
+
+**When the loss is evaluated, the learner's weights are exactly the weights the data came from**, so
+
+$$
+\rho_t=\exp(\log\pi_{W_k}(o_t)-\log\pi_{W_k}(o_t))\equiv 1 .
+$$
+
+The measured $1\pm5.3\times10^{-4}$ is numerical noise from the forward pass (batched inference versus decoding during sampling), not policy drift — over ten steps it shows no trend, it just random-walks around 1.
+
+Substituting into the three formulas in the [PyTRIO docs](https://docs.pytrio.com/docs/guide/loss_fn):
+
+| loss | formula (from the docs) | at $\rho=1$ |
+| --- | --- | --- |
+| `importance_sampling` | `loss = -(prob_ratio * advantages).sum()` | $-(1/N)\sum_t A_t$ |
+| `ppo` | $-\mathbb{E}\big[\min(\rho A,\ \operatorname{clip}(\rho,1\pm\varepsilon)A)\big]$ | $\operatorname{clip}(1)=1\Rightarrow -(1/N)\sum_t A_t$ |
+| `cispo` | $-\sum_t \operatorname{sg}(\operatorname{clip}(\rho))\log\pi_\theta(o_t)A_t$ | $+(1/N)\sum_t \mathrm{NLL}_t A_t$ |
+
+**IS and PPO are literally the same expression at $\rho=1$ — and so are their gradients** (all three give $-\mathbb{E}[A\,\nabla\log\pi]$). Only CISPO is a different function. The three losses can therefore differ only where $\rho\neq1$: several inner epochs over the same batch (from the second epoch on, $\rho$ departs from 1), or a sampler that lags the trainer (genuinely off-policy).
+
+Both `01-demo-sync.py` and `02-demo-async.py` **re-snapshot every step**, so $\rho$ is 1 in both. **Which means: no number of extra steps, no learning rate, no larger model will separate the three losses with this demo.** My earlier suggestion to "raise the learning rate so $\rho$ starts moving" was wrong; corrected here.
+
+### 4.2.2 So what decides the sign and the size of the loss? A batch-level lottery
+
+Write $T_i$ for the length of completion $i$ and $A_i$ for its advantage (zero-mean within the group). Then
+
+$$
+L_{\text{IS}}=L_{\text{PPO}}=-\frac1N\sum_i T_i A_i=-\frac1N\sum_i (T_i-\bar T)A_i ,
+$$
+
+so **the sign only asks whether the correct answers in this step's batch happened to be longer** — nothing in the algorithm constrains it. And for CISPO:
+
+$$
+L_{\text{CISPO}}=\frac1N\sum_i\Big(\sum_t \mathrm{NLL}_{i,t}\Big)A_i\;\approx\;\frac{h}{N}\sum_i T_i A_i=-h\cdot L_{\text{IS}},
+$$
+
+where $h$ is the policy's mean per-token negative log-likelihood (entropy, in nats). Two testable predictions follow: **CISPO has the opposite sign to IS/PPO**, and **its magnitude is about $h$ times theirs**.
+
+Measured on the same 40 questions across the four runs:
+
+| Check | Result |
+| --- | --- |
+| IS 11-17 vs IS 11-20 (two independent samples) | same sign on 6/6 shared steps |
+| IS/PPO consensus vs CISPO | opposite sign on 5/6 steps (the exception, step 1, has PPO = −0.0011, essentially a tie) |
+| $\lvert L_{\text{CISPO}}\rvert/\lvert L_{\text{IS}}\rvert$ | 0.20–1.47, mean ≈ 0.73 → consistent with $h\approx0.2$–$1.5$ nats/token |
+
+So **"CISPO's loss is systematically negative" is not a coincidence — it is what the formula says** (it multiplies the logprob rather than the ratio).
+
+**"PPO's loss is positive throughout" has no theoretical basis.** The sharpest counter-evidence is inside the study partner's own numbers: his IS and PPO runs are **the same function** at $\rho=1$, yet his IS went negative 3/9 times. One function producing different signs in two samples is a sign that the sign is a lottery outcome, not an algorithm signature.
+
+### 4.2.3 "The custom loss is slower": real mechanism, unmeasurable at this scale
+
+The mechanism is genuinely more expensive: CISPO ships the logprobs back to the local process, computes the loss with CPU torch, and sends the gradient back, while a built-in loss runs entirely on the remote GPU. At ten steps that overhead is drowned by sampling time and log uploads, so "CISPO 678 s vs IS 638 s" on his side and "CISPO 320 s, actually the fastest" on mine are not in conflict — **the direction is right and the magnitude is unmeasurable**. Measuring it needs logging disabled, many more steps, and repeats.
 
 ### 4.3 What reproduced and what did not
 
@@ -363,7 +426,11 @@ then all three losses **took the same branch** during this batch. Task 01's conc
 | "explore longer, then converge" | gen_len peaks around step 2 | all four peak at step 2 (365–381) then fall back to 225–293 ✓ |
 | custom loss is slower | CISPO 678 s vs IS 638 s | CISPO 320 s, IS 352 s, PPO 360 s ✗ |
 
-What reproduced is **structural**: CISPO's loss sits below zero almost always (it optimises the logprob directly), and all four runs lengthen before they converge. What did not reproduce is the **numeric** kind of claim: how many times a sign flipped, which loss was slower. The former says single runs are noisier than that post suggests; the latter is most likely masked by logging time — in my 11-17 run, 435 s of the ten steps went to waiting for SwanLab to re-upload, an order of magnitude more than the gap between the three losses.
+What reproduced is **structural**: CISPO's loss sits below zero almost always (it multiplies the logprob rather than the ratio, see §4.2.2), and all four runs lengthen before they converge. What did not reproduce is the **numeric** kind of claim: how many times a sign flipped, which loss was slower. The former says single runs are noisier than that post suggests; the latter is most likely masked by logging time — in my 11-17 run, 435 s of the ten steps went to waiting for SwanLab to re-upload, an order of magnitude more than the gap between the three losses.
+
+**But "longer first, then converges" needs a discount too.** All four runs (including the study partner's) walk through **the same 40 questions in the same order** — `pick_batch` takes consecutive slices, and `01-demo-sync.py` and `03-grpo.py` are identical at that step. So the four `avg_gen_len` curves correlate at **r = +0.87 to +0.98**, while reward correlates only +0.49 to +0.83 and `frac_degenerate` only +0.20 to +0.80.
+
+**In other words, that length curve is mostly the difficulty profile of these 40 questions, not a dynamic of GRPO** — any algorithm, or even a random baseline, would draw the same shape. Which is the real reason "structural claims reproduce and numeric ones do not": **what reproduces is the shared experimental setup (the same questions, the same script, the same formula structure), not a property of the algorithm.**
 
 ### 4.4 Timing: the custom loss is not more expensive
 
@@ -398,11 +465,11 @@ One demo-specific simplification deserves its own line: **the advantage is broad
 
 ## 7. Next
 
-- **Make $\rho$ leave 1 — this is the priority.** Right now all three losses take the same branch (§4.2), so there is nothing to compare until the clip actually fires: raise the learning rate from 4e-5 to 1e-4 or 4e-4, or run many more steps, and watch whether `cispo/ratio_mean` drifts away from 1 and `clip_fraction` starts to appear.
+- **Make $\rho\neq1$ if you want to compare the three losses.** Right now they are the same function (§4.2.1), so more steps or a bigger learning rate will not help. Two workable routes: several inner epochs over the same datums (from the second epoch on, $\rho$ departs from 1), or a deliberately stale sampler (stale weights, genuinely off-policy). This is also where the clip actually fires in the DAPO/GSPO-style setups.
 - **Raise the group size and the task difficulty.** The current bottleneck is that 60–75% of sampling is thrown away: GSM8K is too easy for Qwen3.5-4B, and step 0 is already all correct. Try harder questions (MATH), or raise `group_size` from 8 to 16, and see whether `frac_degenerate` drops.
 - **Pair every comparison with a repeat of the same configuration.** That 30% noise floor from §4.1 was the most expensive lesson of this batch: without a repeat you cannot tell an algorithmic difference from luck.
+- **Fix the questions and add a fixed evaluation set.** If the length curve correlates at r≈0.9 across runs, the curve is decided by the questions; to see whether the policy improved you need the same batch every step plus a held-out set that never trains. This is the requirement that came out of the observation in §3.3.
 - **Restore the simplifications**: group normalization plus a KL term — good practice for `forward_backward_custom`.
-- **Add a fixed evaluation set** to separate "training reward" from "generalization reward" — a requirement that came directly out of the observation in §3.3.
 
 > Series index: [Agentic RL Lab notes](/series/agentic-rl-lab/). Previous: [Task 01 · a roboticist's first pass at LLM RL](/posts/from-controller-to-policy-gradient/).
 

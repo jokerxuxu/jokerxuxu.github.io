@@ -351,7 +351,70 @@ $$
 
 三者在这批实验里**走的是同一个分支**。Task01 推出来的"三种 loss 的差别被压缩进一维力度函数 $w(\rho)$"这句话没错，但前提是 $w$ 的不同区域会被走到——这次一个都没走到。
 
-**所以"10 步拉不开差距"这个结论要改写：不是步数不够，而是 $\rho$ 从来没远离 1，三种 loss 的差异连生效的机会都没有。** 要让它们分开，得让 $\rho$ 真的跑起来：更大的学习率、更多步数，或者让采样与更新之间隔得更远。
+**所以"10 步拉不开差距"这个结论要改写：不是步数不够，而是 $\rho$ 从来没远离 1，三种 loss 的差异连生效的机会都没有。**
+
+### 4.2.1 更要命的是：这个 demo 里 $\rho$ 恒等于 1
+
+再往里想一层，会发现上一段那句"clip 没触发"不是学习率太小造成的，而是**结构上不可能触发**。看代码的顺序：
+
+```python
+sampling_client = training_client.save_weights_and_get_sampling_client()  # 快照当前权重 W_k
+...                                                                      # 用 W_k 采样 → sampling_logprobs = log π_{W_k}(o)
+fwd_bwd_future = training_client.forward_backward(datums, loss_fn=...)    # 用 W_k 前向 → target_logprobs = log π_{W_k}(o)
+optim_future = training_client.optim_step(adam_params)                    # W_k → W_{k+1}
+```
+
+**算 loss 的时候，learner 的权重就是采样时那份权重**，所以
+
+$$
+\rho_t=\exp(\log\pi_{W_k}(o_t)-\log\pi_{W_k}(o_t))\equiv 1 .
+$$
+
+实测的 $1\pm5.3\times10^{-4}$ 是前向的数值差异（批量前向 vs 采样时解码），不是策略漂移——十步下来它没有趋势，只是随机游走。
+
+代入 [PyTRIO 官方文档](https://docs.pytrio.com/docs/guide/loss_fn) 给的三个公式：
+
+| loss | 公式（文档原文） | 在 $\rho=1$ 处 |
+| --- | --- | --- |
+| `importance_sampling` | `loss = -(prob_ratio * advantages).sum()` | $-(1/N)\sum_t A_t$ |
+| `ppo` | $-\mathbb{E}\big[\min(\rho A,\ \operatorname{clip}(\rho,1\pm\varepsilon)A)\big]$ | $\operatorname{clip}(1)=1\Rightarrow -(1/N)\sum_t A_t$ |
+| `cispo` | $-\sum_t \operatorname{sg}(\operatorname{clip}(\rho))\log\pi_\theta(o_t)A_t$ | $+(1/N)\sum_t \mathrm{NLL}_t A_t$ |
+
+**IS 和 PPO 在 $\rho=1$ 处逐字相同；连梯度也一样**（三者的梯度都是 $-\mathbb{E}[A\,\nabla\log\pi]$）。只有 CISPO 是另一个函数。所以这三种 loss 的差别只在 $\rho\neq1$ 的地方才会出现——同一批数据做多个 inner epoch（第二个 epoch 起 $\rho$ 才偏离 1），或者采样器落后于 trainer（真正的 off-policy）。
+
+而 `01-demo-sync.py` 和 `02-demo-async.py` 都是**每步重新快照**，所以两个脚本里 $\rho$ 永远等于 1。**这意味着：无论加步数、提学习率、还是换模型，这个 demo 都分不开三种 loss。** 我原来写的"把学习率提上去让 $\rho$ 跑起来"是错的，这里更正。
+
+### 4.2.2 那 loss 的符号和数值由什么决定？一次 batch 级抽签
+
+把第 $i$ 条回答的长度记作 $T_i$、优势记作 $A_i$（组内零均值），则
+
+$$
+L_{\text{IS}}=L_{\text{PPO}}=-\frac1N\sum_i T_i A_i=-\frac1N\sum_i (T_i-\bar T)A_i ,
+$$
+
+**符号只取决于"这一步里答对的回答是不是更长"**，算法对它没有任何约束——这是一次抽签。而 CISPO：
+
+$$
+L_{\text{CISPO}}=\frac1N\sum_i\Big(\sum_t \mathrm{NLL}_{i,t}\Big)A_i\;\approx\;\frac{h}{N}\sum_i T_i A_i=-h\cdot L_{\text{IS}},
+$$
+
+其中 $h$ 是策略的平均每 token 负对数似然（熵，nats）。于是有两条可检验的预测：**CISPO 与 IS/PPO 反号**，且**量级约为 $h$ 倍**。
+
+同一批 40 道题、四个 run 的实测：
+
+| 检验 | 结果 |
+| --- | --- |
+| IS 11-17 vs IS 11-20（两次独立抽样） | 6/6 个共有步同号 |
+| IS/PPO 的共识 vs CISPO | 5/6 步反号（唯一例外 step 1，PPO = −0.0011，几乎打平） |
+| $\lvert L_{\text{CISPO}}\rvert/\lvert L_{\text{IS}}\rvert$ | 0.20–1.47，均值 ≈ 0.73 → 对应 $h\approx0.2$–$1.5$ nats/token |
+
+所以 **"CISPO 的 loss 系统性偏负"不是巧合，是公式本身决定的**（它乘的是 logprob 而不是 ratio）。
+
+而 **"PPO 的 loss 全程为正"没有理论依据**。最有力的反证在搭子自己的数据里：他跑的 IS 和 PPO 在 $\rho=1$ 处是**同一个函数**，可他的 IS 有 3/9 次为负。同一个函数在两次抽样里符号不同，就说明符号是抽签结果，不是算法签名。
+
+### 4.2.3 "custom loss 更慢"：机制成立，但这个规模测不出来
+
+机制上确实更贵：CISPO 要把 logprob 传回本地进程、在 CPU 上用 torch 算 loss、再把梯度传回远端；内置 loss 全在远端 GPU 上算。10 步的量级下这点开销被采样时间和日志上传淹没，所以"他那边 CISPO 678 s vs IS 638 s"和"我这边 CISPO 320 s 反而最快"都不矛盾——**方向对、量级测不出来**。要测得关掉日志同步、拉长步数、再多跑几次取平均。
 
 ### 4.3 能复现的和不能复现的
 
@@ -363,7 +426,11 @@ $$
 | "先变长探索、再收敛" | gen_len 在 step 2 冲高 | 四组都在 step 2 冲高（365–381）后回落到 225–293 ✓ |
 | custom loss 更慢 | CISPO 678 s vs IS 638 s | CISPO 320 s、IS 352 s、PPO 360 s ✗ |
 
-能复现的是**结构性**的：CISPO 的 loss 几乎总在零以下（它直接优化 logprob），四组都先变长再收敛。不能复现的是那些**数值性**结论：负号出现几次、哪个 loss 更慢。前者说明单次 run 的噪声比那篇大，后者更可能是被日志上传耗时掩盖了——我 11-17 那次跑，10 步里有 435 秒花在等 SwanLab 重传，比三个 loss 之间的差距大一个量级。
+能复现的是**结构性**的：CISPO 的 loss 几乎总在零以下（它乘的是 logprob 而不是 ratio，见 4.2.2），四组都先变长再收敛。不能复现的是那些**数值性**结论：负号出现几次、哪个 loss 更慢。前者说明单次 run 的噪声比那篇大，后者更可能是被日志上传耗时掩盖了——我 11-17 那次跑，10 步里有 435 秒花在等 SwanLab 重传，比三个 loss 之间的差距大一个量级。
+
+**但"先变长再收敛"这条也要打个折扣。** 四次 run（含搭子的）跑的是**同样的前 40 道题、同样的顺序**——`pick_batch` 取的是数据集的连续切片，`01-demo-sync.py` 和 `03-grpo.py` 在这一步完全一样。所以四次 run 的 `avg_gen_len` 曲线相关系数高达 **r = +0.87 ~ +0.98**，而 reward 只有 +0.49 ~ +0.83、`frac_degenerate` 只有 +0.20 ~ +0.80。
+
+**换句话说，那条长度曲线主要是这 40 道题的难度剖面，而不是 GRPO 的动力学**——换成任何算法、甚至一条随机基线，也会画出同样的形状。反过来说，这正是"结构性结论能复现、数值性结论不能"的真正原因：**复现的是共享的实验条件（同一批题、同一段脚本、同一套公式结构），不是算法的性质。**
 
 ### 4.4 耗时：custom loss 没有更贵
 
@@ -404,11 +471,11 @@ $$
 
 ## 七、下一步
 
-- **让 $\rho$ 离开 1，这是最优先的。** 现在三种 loss 走的是同一个分支（4.2 节），比较它们之前得先让 clip 真的触发：把学习率从 4e-5 提到 1e-4 或 4e-4，或者把步数拉长，看 `cispo/ratio_mean` 是否明显偏离 1、`clip_fraction` 是否开始出现。
+- **想让三种 loss 真的分开，必须让 $\rho\neq1$。** 现在它们在 $\rho=1$ 处是同一个函数（4.2.1），加步数、提学习率都没用。可行的做法有两条：同一批 datums 做多个 inner epoch（第二个 epoch 起 $\rho$ 才偏离 1），或者故意让采样器落后于 trainer（stale weights，真正的 off-policy）。这也是 DAPO/GSPO 那些方法里 clip 真正会触发的地方。
 - **加大 group size、提高任务难度。** 现在的瓶颈是 60–75% 的采样被丢掉：GSM8K 对 Qwen3.5-4B 太简单，第 0 步就全对。换成更难的题（比如 MATH），或者把 `group_size` 从 8 加到 16，看看 `frac_degenerate` 会不会掉下来。
 - **每次比较都配一个同配置的重复 run。** 4.1 节那 30% 的噪声地板是这次最贵的教训：不做重复，就分不清"算法差异"和"这次运气"。
+- **固定题目 + 固定评测集。** 既然四条 run 的长度曲线相关到 r≈0.9 说明曲线由题目决定，那要评估"策略有没有变好"，就得每步用同一批题、并且另有一个不参与训练的固定评测集。这是 3.3 节那个观察逼出来的需求。
 - **把简化补回去**：组内标准化 + KL 项，正好用 `forward_backward_custom` 练手。
-- **补一个固定评测集**，把"训练 reward"和"泛化 reward"分开——这是 3.3 节那个观察逼出来的需求。
 
 > 系列索引：[Agentic RL Lab 实战笔记](/zh/series/agentic-rl-lab/)。上一篇：[Task01 · 一个机器人方向读者的 LLM 强化学习入门](/zh/posts/from-controller-to-policy-gradient/)。
 
