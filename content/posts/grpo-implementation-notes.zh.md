@@ -1,7 +1,7 @@
 ---
 title: "Datawhale Agentic RL Task2：把 GRPO 从公式读到代码"
 date: 2026-11-20
-summary: "逐段读 agentic-rl-lab 的 GRPO 实现：一次 step 里 rollout、reward、advantage、Datum、更新分别做了什么；再回头看这次十步 run 留下的真实记录——320 条采样只有 112 条进入更新，三步根本没有梯度。"
+summary: "逐段读 agentic-rl-lab 的 GRPO 实现，再自己把 importance_sampling / ppo / cispo 三种 loss 各跑一遍：320 条采样只有 112 条进入更新，同一份配置两次跑就差 30%，而概率比始终贴着 1，clip 一次都没触发。"
 tags: ["强化学习", "GRPO", "PyTRIO", "实现", "组队学习"]
 categories: ["学习笔记"]
 series: ["Agentic RL Lab"]
@@ -12,6 +12,8 @@ ShowToc: true
 > Task02 记录：GRPO 章。教程见 [GRPO 从组内比较开始](https://datawhalechina.github.io/agentic-rl-lab/experiments/grpo/)，快速启动见 [运行指南](https://datawhalechina.github.io/agentic-rl-lab/experiments/grpo/run.html)，代码见 [datawhalechina/agentic-rl-lab/experiments/grpo](https://github.com/datawhalechina/agentic-rl-lab/tree/main/experiments/grpo)。记录于 2026-11-20。
 
 上一篇（Task01）讲的是"为什么"：baseline 为什么能换成组内均值、IS / PPO / CISPO 三个力度函数怎么推。这一篇讲"怎么写"——把 `experiments/grpo/01-demo-sync.py` 从头到尾读一遍，看清每一步在干什么；然后回头看这台机器上真的跑过的那次 run 留下了什么。
+
+第四节是我自己动手的部分：把 `importance_sampling` / `ppo` / `cispo` 三种 loss 在同一台机器上各跑一遍，另外加一次**同配置的重复 run**。结果和一位学习搭子的独立记录对照着读（他的那篇：[Task02 打卡：用 PyTRIO 在 GSM8K 上跑通 GRPO](https://zhuanlan.zhihu.com/p/2106862160429295432)）。
 
 先给结论：**GRPO 的实现比公式短得多。** 难的从来不是把公式敲进代码，而是那些"写错了也不报错，只是悄悄学歪"的地方：采样时的策略快照、右移对齐、退化组、以及"没数据的那一步到底该不该更新"。
 
@@ -287,7 +289,87 @@ Upload failed due to network or server issues, retrying automatically.
 
 教程作者自己给的经验是：十步大约 5 元，调通整个脚本花了 55 元。我这次是跟着快速启动里的最小配置跑的一次 ten-step demo，实际消耗以 PyTRIO 控制台账单为准；本地能确定的只有 wall clock——13 分钟，其中约 7 分钟在等日志上传。
 
-## 四、跑完这一遍之后，记下来的实现细节
+## 四、自己跑一遍：三种 loss 的同机对照
+
+搭子那篇提醒了我一件事：只跑一种 loss，看不出三种目标的差别。于是 2026-11-20 我在同一个仓库、同一台机器上把 `ppo` 和 `cispo` 也各跑了一遍，另外**把 `importance_sampling` 原样重跑了一次**——为了知道"同一份配置两次跑能差多少"。加上 11-17 那次，一共四条曲线。
+
+超参完全没动（Qwen3.5-4B、LoRA rank 32、lr 4e-5、10 步、bs 4、gs 8、512 tokens、temperature 1.0、seed 42），只改 `--loss-fn`：
+
+```bash
+uv run python experiments/grpo/01-demo-sync.py \
+    --steps 10 --batch-size 4 --group-size 8 \
+    --max-tokens 512 --loss-fn {importance_sampling|ppo|cispo} \
+    --swanlab-mode online
+```
+
+四次 run 都在同一个 SwanLab project：[agentic-rl-lab-grpo](https://swanlab.cn/@jokerxuxu/agentic-rl-lab-grpo) —— IS（11-17）`runs/2gmiydii`、PPO（11-20）`runs/wq9npu15`、CISPO（11-20）`runs/ulo34fae`、IS 重跑（11-20）`runs/fscv1nz3`。
+
+| 指标 | IS 11-17 | IS 11-20（重跑） | PPO 11-20 | CISPO 11-20 |
+| --- | --- | --- | --- | --- |
+| 起点 reward | 1.000 | 1.000 | 0.969 | 1.000 |
+| 最终 reward | 0.875 | 0.938 | 0.938 | 0.938 |
+| reward 最低点 | 0.750（s2） | 0.719（s3） | 0.750（s3） | 0.688（s3） |
+| 平均 reward（1–9） | 0.858 | 0.920 | 0.878 | 0.892 |
+| frac_degenerate 均值 | 0.65 | 0.75 | 0.60 | 0.65 |
+| 零更新的步 | 0, 3, 6 | 0, 7 | 3 | 0, 6 |
+| 有效 completion（datums） | 112 | 80 | 128 | 112 |
+| train_tokens | 37,906 | 25,920 | 41,194 | 35,412 |
+| loss_mean 为负的次数 | 1/7 | 1/8 | 3/9 | 7/8 |
+| avg_gen_len 峰→末 | 380.7→237.1 | 365.0→292.6 | 373.3→225.0 | 370.2→253.0 |
+| 单组耗时（含日志等待） | 785 s | 352 s | 360 s | 320 s |
+
+![四条曲线：reward 分不开、退化组占主导、只有 CISPO 稳定在零以下、同一配置两次差了 30%](/images/agentic-rl/grpo-three-losses.png)
+
+### 4.1 先定噪声地板：同一份配置跑两次
+
+看图 4：IS 11-17 和 IS 11-20 是**同一条命令**，只差了一天。
+
+- 有效样本 112 vs 80，差 30%（train_tokens 37.9k vs 25.9k，差 46%）
+- 平均 reward 0.858 vs 0.920，差 0.062
+- reward 最低点 0.750 vs 0.719
+
+**所以 PPO 看起来"信号最多"（128 个 datums）并不能说明它更强——同一个 IS 自己两次就差了 30%。** 任何小于这个量级的组间差异都不能当结论。这是我这批实验里最有用的一条。
+
+顺带解释了一个反直觉现象：**为什么 seed 都是 42，两次结果还差这么多？** 因为 `np.random.seed` 只管本地随机数，管不到远端采样服务——采样本身不是确定性的。
+
+### 4.2 更根本的发现：clip 一次都没触发
+
+CISPO 额外记了 `cispo/ratio_mean` 和 `cispo/clip_fraction`，本来只是参考指标，结果它们把问题指到了根上：
+
+![概率比始终贴着 1，clip_fraction 每一步都是 0](/images/agentic-rl/grpo-cispo-ratio.png)
+
+- `ratio_mean` 十步里始终在 **1 ± 5.3×10⁻⁴**
+- `clip_fraction` **每一步都是 0**
+
+$\rho=\exp(\log\pi_\theta-\log\pi_{\text{old}})$ 几乎恒等于 1，意味着**在采样和更新之间，策略几乎没动**。既然 $\rho$ 没离开 1：
+
+$$
+w_{\text{IS}}(\rho)=\rho\approx 1,\qquad
+w_{\text{PPO}}(\rho)=\operatorname{clip}(\rho,1\pm\varepsilon)\approx \rho,\qquad
+w_{\text{CISPO}}(\rho)=\operatorname{sg}(\operatorname{clip}(\rho))\approx \operatorname{sg}(\rho)
+$$
+
+三者在这批实验里**走的是同一个分支**。Task01 推出来的"三种 loss 的差别被压缩进一维力度函数 $w(\rho)$"这句话没错，但前提是 $w$ 的不同区域会被走到——这次一个都没走到。
+
+**所以"10 步拉不开差距"这个结论要改写：不是步数不够，而是 $\rho$ 从来没远离 1，三种 loss 的差异连生效的机会都没有。** 要让它们分开，得让 $\rho$ 真的跑起来：更大的学习率、更多步数，或者让采样与更新之间隔得更远。
+
+### 4.3 能复现的和不能复现的
+
+| 结论 | 搭子那篇 | 我这边 |
+| --- | --- | --- |
+| CISPO 的 loss 系统性偏负 | 6/8 次为负 | 7/8 次为负 ✓ |
+| IS 会出现负 loss | 3/9 次为负 | 1/7、1/8 次为负（两次 IS 都不多） |
+| PPO 的 loss 全程为正 | 是 | 否，3/9 次为负 ✗ |
+| "先变长探索、再收敛" | gen_len 在 step 2 冲高 | 四组都在 step 2 冲高（365–381）后回落到 225–293 ✓ |
+| custom loss 更慢 | CISPO 678 s vs IS 638 s | CISPO 320 s、IS 352 s、PPO 360 s ✗ |
+
+能复现的是**结构性**的：CISPO 的 loss 几乎总在零以下（它直接优化 logprob），四组都先变长再收敛。不能复现的是那些**数值性**结论：负号出现几次、哪个 loss 更慢。前者说明单次 run 的噪声比那篇大，后者更可能是被日志上传耗时掩盖了——我 11-17 那次跑，10 步里有 435 秒花在等 SwanLab 重传，比三个 loss 之间的差距大一个量级。
+
+### 4.4 耗时：custom loss 没有更贵
+
+三次 11-20 的 run 分别是 352 s（IS）、360 s（PPO）、320 s（CISPO），差距在 40 秒以内，而且这个量级和 SwanLab 上传等待同阶。**在 10 步这个规模上测不出 custom loss 的额外开销**；要测得把步数拉长，并关掉日志同步再对比。
+
+## 五、跑完这一遍之后，记下来的实现细节
 
 这些是读代码 + 看自己的 run 才注意到的东西，教程正文里不会写：
 
@@ -304,8 +386,9 @@ Upload failed due to network or server issues, retrying automatically.
 6. **本地 torch 是 CPU 版，但 custom loss 真的会用到它。** 只有 `forward_backward_custom` 会把 logprob 送回本地算 loss，这时 CPU torch 才开始工作。
 
 7. **日志里有两个 loss 字段。** `loss_mean` 和 `loss` 内容相同，另外 trainer 返回的其他键会被加上 `trainer/` 前缀，CISPO 自己的指标保留 `cispo/` 前缀——所以导出 CSV 时按名字筛，别只盯着 `reward`。
+8. **`huggingface.co` 断了也能跑。** 第二次跑三组实验时 HF 完全连不上（`load_dataset` 卡在 HEAD 请求重试里好几分钟）。GSM8K 已经在本地缓存里，所以加上 `HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1` 就直接读缓存启动，不用等网络。**如果你的数据已经下过一次，就别让训练脚本死在一次无关的联网检查上。**
 
-## 五、和论文版 GRPO 的差距
+## 六、和论文版 GRPO 的差距
 
 这份 demo 为了讲清楚链路，做了三处简化（教程自己在 readme 里也列了）：
 
@@ -319,10 +402,11 @@ Upload failed due to network or server issues, retrying automatically.
 
 还有一个 demo 特有的简化值得单独点名：**advantage 广播到整条回答**。论文版 GRPO 也是这么做的（token 级信用分配的缺失正是 DAPO / GSPO / Dr.GRPO 要处理的问题），但知道"这份代码就这么写"和"算法本来就这样"是两件事。
 
-## 六、下一步
+## 七、下一步
 
-- **把三个 loss 跑一遍对比。** 同样的超参，只换 `--loss-fn`，这是这个仓库最想让人做的事。需要云端额度，跑之前我会先看余额。
-- **加大 group size、提高任务难度。** 现在的瓶颈是 65% 的采样被丢掉：GSM8K 对 Qwen3.5-4B 太简单，第 0 步就全对。换成更难的题（比如 MATH），或者把 group_size 从 8 加到 16，看看 `frac_degenerate` 会不会掉下来。
+- **让 $\rho$ 离开 1，这是最优先的。** 现在三种 loss 走的是同一个分支（4.2 节），比较它们之前得先让 clip 真的触发：把学习率从 4e-5 提到 1e-4 或 4e-4，或者把步数拉长，看 `cispo/ratio_mean` 是否明显偏离 1、`clip_fraction` 是否开始出现。
+- **加大 group size、提高任务难度。** 现在的瓶颈是 60–75% 的采样被丢掉：GSM8K 对 Qwen3.5-4B 太简单，第 0 步就全对。换成更难的题（比如 MATH），或者把 `group_size` 从 8 加到 16，看看 `frac_degenerate` 会不会掉下来。
+- **每次比较都配一个同配置的重复 run。** 4.1 节那 30% 的噪声地板是这次最贵的教训：不做重复，就分不清"算法差异"和"这次运气"。
 - **把简化补回去**：组内标准化 + KL 项，正好用 `forward_backward_custom` 练手。
 - **补一个固定评测集**，把"训练 reward"和"泛化 reward"分开——这是 3.3 节那个观察逼出来的需求。
 
@@ -332,5 +416,6 @@ Upload failed due to network or server issues, retrying automatically.
 
 - 课程仓库：[datawhalechina/agentic-rl-lab](https://github.com/datawhalechina/agentic-rl-lab) ｜ Task02 教程：[GRPO 从组内比较开始](https://datawhalechina.github.io/agentic-rl-lab/experiments/grpo/) ｜ [快速启动](https://datawhalechina.github.io/agentic-rl-lab/experiments/grpo/run.html)
 - 本次 run 的代码：[experiments/grpo/01-demo-sync.py](https://github.com/datawhalechina/agentic-rl-lab/blob/main/experiments/grpo/01-demo-sync.py)
+- 同组学习搭子的独立记录：[Task02 打卡：用 PyTRIO 在 GSM8K 上跑通 GRPO](https://zhuanlan.zhihu.com/p/2106862160429295432)（第 4 节的部分结论来自与它的对照）
 - DeepSeekMath（GRPO 出处）：[arXiv:2402.03300](https://arxiv.org/abs/2402.03300)
 - PyTRIO 文档：[pytrio.cn](https://pytrio.cn/) ｜ SwanLab：[swanlab.cn](https://swanlab.cn/)
