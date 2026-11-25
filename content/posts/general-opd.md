@@ -1,5 +1,5 @@
 ---
-title: "Datawhale Agentic RL Task04｜Reverse KL down to the token level: 160 answers, 97,492 training tokens, and a diluted loss"
+title: "Datawhale Agentic RL Task04｜general OPD
 date: 2026-11-25T21:30:00+08:00
 summary: "Ten steps of on-policy distillation on DeepMath-103K, with every token accounted for: what reverse KL actually measures, and why the loss curve in SwanLab is just the KL curve divided by a factor."
 tags: ["reinforcement-learning", "knowledge-distillation", "on-policy-distillation", "PyTRIO", "SwanLab", "study-notes"]

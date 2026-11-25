@@ -1,5 +1,5 @@
 ---
-title: "Datawhale Agentic RL Task04｜算到 token 级的 reverse KL：160 条回答、97,492 个训练 token 和一个被稀释的 loss"
+title: "Datawhale Agentic RL Task04｜general OPD
 date: 2026-11-25T21:30:00+08:00
 summary: "在 DeepMath-103K 上跑通 10 步 on-policy 蒸馏，把每个 token 的账都对上：reverse KL 到底在量什么，以及 SwanLab 上那条 loss 曲线为什么其实就是 KL 曲线除以了一个系数。"
 tags: ["强化学习", "知识蒸馏", "on-policy distillation", "PyTRIO", "SwanLab", "学习笔记"]
